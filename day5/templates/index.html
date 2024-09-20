@@ -14,6 +14,7 @@
 
         #main-content {
             display: flex;
+            flex-wrap: wrap;
         }
 
         #unassigned, .column {
@@ -27,6 +28,8 @@
 
         .column {
             background-color: #f9f9f9;
+            flex:1;
+            margin-right: 10px;
         }
 
         .column h2 {
@@ -43,12 +46,18 @@
         li {
             margin-bottom: 5px;
         }
+        #unassigned {
+            
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
     <h1>Site Tracker</h1>
     <div id="controls">
         <button id="add-column">Add Column</button>
+        <button id="reset-columns">Reset Collumn</button>
+        <button id="randomize-colors">Randomize Colors</button>
         <!-- Time Filter Buttons -->
         <button class="time-filter" data-period="day">1 Day</button>
         <button class="time-filter" data-period="week">1 Week</button>
@@ -75,201 +84,278 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Scripts -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const unassignedList = document.getElementById('unassigned-list');
-            const columnsDiv = document.getElementById('columns');
-            const addColumnBtn = document.getElementById('add-column');
-            const sortOptions = document.getElementById('sort-options');
-            const timeFilterButtons = document.querySelectorAll('.time-filter');
+    document.addEventListener('DOMContentLoaded', () => {
+    const unassignedList = document.getElementById('unassigned-list');
+    const columnsDiv = document.getElementById('columns');
+    const addColumnBtn = document.getElementById('add-column');
+    const resetColumnsBtn = document.getElementById('reset-columns');
+    const randomizeColorsBtn = document.getElementById('randomize-colors'); // Nouveau bouton
+    const sortOptions = document.getElementById('sort-options');
+    const timeFilterButtons = document.querySelectorAll('.time-filter');
 
-            let sites = []; // Will fetch from server
-            let columns = [
-                { title: 'Games', color: getRandomColor(), sites: [] },
-                { title: 'Entertainment', color: getRandomColor(), sites: [] },
-                { title: 'Research', color: getRandomColor(), sites: [] },
-                { title: 'Courses', color: getRandomColor(), sites: [] },
-                { title: 'Others', color: getRandomColor(), sites: [] },
+    let sites = []; // Données des sites
+    let columns = []; // Colonnes, seront chargées depuis le stockage local
+
+    let currentTimeFilter = 'all';
+
+    function getRandomBrightColor() {
+        // Génère une couleur claire aléatoire
+        const letters = '89ABCDEF'; // Utiliser des valeurs élevées pour éviter les couleurs sombres
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * letters.length)];
+        }
+        return color;
+    }
+
+    function saveColumnsToLocalStorage() {
+        localStorage.setItem('columns', JSON.stringify(columns));
+    }
+
+    function loadColumnsFromLocalStorage() {
+        const columnsData = localStorage.getItem('columns');
+        if (columnsData) {
+            columns = JSON.parse(columnsData);
+            // Assurez-vous que chaque colonne a une propriété 'sites' vide pour commencer
+            columns.forEach(col => {
+                col.sites = [];
+            });
+        } else {
+            // Si aucune donnée n'est trouvée, initialisez avec les colonnes par défaut
+            columns = [
+                { title: 'Games', color: getRandomBrightColor(), sites: [] },
+                { title: 'Entertainment', color: getRandomBrightColor(), sites: [] },
+                { title: 'Research', color: getRandomBrightColor(), sites: [] },
+                { title: 'Courses', color: getRandomBrightColor(), sites: [] },
+                { title: 'Others', color: getRandomBrightColor(), sites: [] },
             ];
+        }
+    }
 
-            let currentTimeFilter = 'all';
-
-            function getRandomColor() {
-                return '#' + Math.floor(Math.random()*16777215).toString(16);
-            }
-
-            function renderSites() {
-                unassignedList.innerHTML = '';
-                let filteredSites = filterSitesByTime(sites);
-                filteredSites.forEach((site) => {
-                    if (site.categories.length === 0) {
-                        let li = document.createElement('li');
-                        li.textContent = `${site.url} (Visits: ${site.visits})`;
-                        let select = document.createElement('select');
-                        select.innerHTML = '<option value="">Assign Category</option>';
-                        columns.forEach((col, colIndex) => {
-                            let option = document.createElement('option');
-                            option.value = colIndex;
-                            option.textContent = col.title;
-                            select.appendChild(option);
+    function renderSites() {
+        unassignedList.innerHTML = '';
+        let filteredSites = filterSitesByTime(sites);
+        filteredSites.forEach((site) => {
+            if (site.categories.length === 0) {
+                let li = document.createElement('li');
+                li.textContent = `${site.url} (Visits: ${site.visits})`;
+                let select = document.createElement('select');
+                select.innerHTML = '<option value="">Assign Category</option>';
+                columns.forEach((col, colIndex) => {
+                    let option = document.createElement('option');
+                    option.value = colIndex;
+                    option.textContent = col.title;
+                    select.appendChild(option);
+                });
+                select.addEventListener('change', (e) => {
+                    let colIndex = e.target.value;
+                    if (colIndex !== '') {
+                        let column = columns[colIndex];
+                        site.categories.push(column.title);
+                        column.sites.push(site);
+                        // Enregistrer les colonnes
+                        saveColumnsToLocalStorage();
+                        // Envoyer la mise à jour au backend
+                        fetch(`/api/sites/${encodeURIComponent(site.url)}/categories`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ categories: site.categories })
+                        })
+                        .then(response => response.json())
+                        .then(() => {
+                            renderColumns();
+                            renderSites();
+                            renderChart();
                         });
-                        select.addEventListener('change', (e) => {
-                            let colIndex = e.target.value;
-                            if (colIndex !== '') {
-                                let column = columns[colIndex];
-                                site.categories.push(column.title);
-                                column.sites.push(site);
-                                fetch(`/api/sites/${encodeURIComponent(site.url)}/categories`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ categories: site.categories })
-                                })
-                                .then(response => response.json())
-                                .then(() => {
-                                    renderColumns();
-                                    renderSites();
-                                    renderChart();
-                                });
-                            }
-                        });
-                        li.appendChild(select);
-                        unassignedList.appendChild(li);
                     }
                 });
+                li.appendChild(select);
+                unassignedList.appendChild(li);
             }
+        });
+    }
 
-            function renderColumns() {
-                columnsDiv.innerHTML = '';
-                columns.forEach((col) => {
-                    let colDiv = document.createElement('div');
-                    colDiv.className = 'column';
-                    colDiv.style.backgroundColor = col.color;
-                    let h2 = document.createElement('h2');
-                    let totalVisits = getTotalVisits(col.sites);
-                    h2.textContent = `${col.title} (Total Visits: ${totalVisits})`;
-                    colDiv.appendChild(h2);
+    function renderColumns() {
+        columnsDiv.innerHTML = '';
+        columns.forEach((col) => {
+            let colDiv = document.createElement('div');
+            colDiv.className = 'column';
+            colDiv.style.backgroundColor = col.color;
+            let h2 = document.createElement('h2');
+            let totalVisits = getTotalVisits(col.sites);
+            h2.textContent = `${col.title} (Total Visits: ${totalVisits})`;
+            colDiv.appendChild(h2);
 
-                    let ul = document.createElement('ul');
-                    let filteredSites = filterSitesByTime(col.sites);
-                    filteredSites.forEach((site) => {
-                        let li = document.createElement('li');
-                        li.textContent = `${site.url} (Visits: ${site.visits})`;
-                        ul.appendChild(li);
+            let ul = document.createElement('ul');
+            let filteredSites = filterSitesByTime(col.sites);
+            filteredSites.forEach((site) => {
+                let li = document.createElement('li');
+                li.textContent = `${site.url} (Visits: ${site.visits})`;
+                ul.appendChild(li);
+            });
+            colDiv.appendChild(ul);
+            columnsDiv.appendChild(colDiv);
+        });
+    }
+
+    function getTotalVisits(sites) {
+        let filteredSites = filterSitesByTime(sites);
+        return filteredSites.reduce((sum, site) => sum + site.visits, 0);
+    }
+
+    function filterSitesByTime(sites) {
+        let now = new Date();
+        let filteredSites = sites.filter(site => {
+            if (currentTimeFilter === 'all') {
+                return true;
+            }
+            let timestamps = site.timestamps.map(ts => new Date(ts));
+            let periodStart;
+            switch (currentTimeFilter) {
+                case 'day':
+                    periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    break;
+                case 'week':
+                    periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'month':
+                    periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    return true;
+            }
+            return timestamps.some(ts => ts >= periodStart);
+        });
+        return filteredSites;
+    }
+
+    timeFilterButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            currentTimeFilter = button.getAttribute('data-period');
+            renderSites();
+            renderColumns();
+            renderChart();
+        });
+    });
+
+    addColumnBtn.addEventListener('click', () => {
+        let title = prompt('Enter column title:');
+        if (title) {
+            columns.push({ title: title, color: getRandomBrightColor(), sites: [] });
+            saveColumnsToLocalStorage();
+            renderColumns();
+            renderSites();
+            renderChart();
+        }
+    });
+
+    resetColumnsBtn.addEventListener('click', () => {
+        // Réinitialiser les colonnes à leur état initial
+        columns = [
+            { title: 'Games', color: getRandomBrightColor(), sites: [] },
+            { title: 'Entertainment', color: getRandomBrightColor(), sites: [] },
+            { title: 'Research', color: getRandomBrightColor(), sites: [] },
+            { title: 'Courses', color: getRandomBrightColor(), sites: [] },
+            { title: 'Others', color: getRandomBrightColor(), sites: [] },
+        ];
+        saveColumnsToLocalStorage();
+        renderColumns();
+        renderSites();
+        renderChart();
+    });
+
+    randomizeColorsBtn.addEventListener('click', () => {
+        // Re-générer les couleurs pour chaque colonne
+        columns.forEach(col => {
+            col.color = getRandomBrightColor();
+        });
+        saveColumnsToLocalStorage();
+        renderColumns();
+        renderChart();
+    });
+
+    sortOptions.addEventListener('change', () => {
+        let sortBy = sortOptions.value;
+        // Trier les sites dans 'sites'
+        if (sortBy === 'name') {
+            sites.sort((a, b) => a.url.localeCompare(b.url));
+        } else if (sortBy === 'visits') {
+            sites.sort((a, b) => b.visits - a.visits);
+        }
+        // Trier les sites dans chaque colonne
+        columns.forEach(col => {
+            if (sortBy === 'name') {
+                col.sites.sort((a, b) => a.url.localeCompare(b.url));
+            } else if (sortBy === 'visits') {
+                col.sites.sort((a, b) => b.visits - a.visits);
+            }
+        });
+        renderSites();
+        renderColumns();
+        renderChart();
+    });
+
+    function fetchSites() {
+        fetch('/api/sites')
+            .then(response => response.json())
+            .then(data => {
+                sites = data;
+                columns.forEach(col => col.sites = []);
+                sites.forEach(site => {
+                    site.categories = site.categories || [];
+                    site.timestamps = site.timestamps || [];
+                    site.categories.forEach(category => {
+                        let column = columns.find(col => col.title === category);
+                        if (column) {
+                            column.sites.push(site);
+                        }
                     });
-                    colDiv.appendChild(ul);
-                    columnsDiv.appendChild(colDiv);
                 });
-            }
-
-            function getTotalVisits(sites) {
-                let filteredSites = filterSitesByTime(sites);
-                return filteredSites.reduce((sum, site) => sum + site.visits, 0);
-            }
-
-            function filterSitesByTime(sites) {
-                let now = new Date();
-                let filteredSites = sites.filter(site => {
-                    if (currentTimeFilter === 'all') {
-                        return true;
-                    }
-                    let timestamps = site.timestamps.map(ts => new Date(ts));
-                    let periodStart;
-                    switch (currentTimeFilter) {
-                        case 'day':
-                            periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                            break;
-                        case 'week':
-                            periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                            break;
-                        case 'month':
-                            periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                            break;
-                        default:
-                            return true;
-                    }
-                    return timestamps.some(ts => ts >= periodStart);
-                });
-                return filteredSites;
-            }
-
-            timeFilterButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    currentTimeFilter = button.getAttribute('data-period');
-                    renderSites();
-                    renderColumns();
-                    renderChart();
-                });
-            });
-
-            addColumnBtn.addEventListener('click', () => {
-                let title = prompt('Enter column title:');
-                if (title) {
-                    columns.push({ title: title, color: getRandomColor(), sites: [] });
-                    renderColumns();
-                    renderSites();
-                    renderChart();
-                }
-            });
-
-            sortOptions.addEventListener('change', () => {
-                if (sortOptions.value === 'name') {
+                // Appliquer le tri initial
+                let sortBy = sortOptions.value;
+                if (sortBy === 'name') {
                     sites.sort((a, b) => a.url.localeCompare(b.url));
-                } else if (sortOptions.value === 'visits') {
+                } else if (sortBy === 'visits') {
                     sites.sort((a, b) => b.visits - a.visits);
                 }
                 renderSites();
                 renderColumns();
                 renderChart();
             });
+    }
 
-            function fetchSites() {
-                fetch('/api/sites')
-                    .then(response => response.json())
-                    .then(data => {
-                        sites = data;
-                        columns.forEach(col => col.sites = []);
-                        sites.forEach(site => {
-                            site.categories = site.categories || [];
-                            site.timestamps = site.timestamps || [];
-                            site.categories.forEach(category => {
-                                let column = columns.find(col => col.title === category);
-                                if (column) {
-                                    column.sites.push(site);
-                                }
-                            });
-                        });
-                        renderSites();
-                        renderColumns();
-                        renderChart();
-                    });
+    function renderChart() {
+        const ctx = document.getElementById('categoryChart').getContext('2d');
+        const categoryData = columns.map(col => getTotalVisits(col.sites));
+        const categoryLabels = columns.map(col => col.title);
+
+        if (window.categoryChart) {
+            window.categoryChart.destroy();
+        }
+
+        window.categoryChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: categoryLabels,
+                datasets: [{
+                    data: categoryData,
+                    backgroundColor: columns.map(col => col.color),
+                }]
+            },
+            options: {
+                responsive: true
             }
-
-            function renderChart() {
-                const ctx = document.getElementById('categoryChart').getContext('2d');
-                const categoryData = columns.map(col => getTotalVisits(col.sites));
-                const categoryLabels = columns.map(col => col.title);
-
-                if (window.categoryChart) {
-                    window.categoryChart.destroy();
-                }
-
-                window.categoryChart = new Chart(ctx, {
-                    type: 'pie',
-                    data: {
-                        labels: categoryLabels,
-                        datasets: [{
-                            data: categoryData,
-                            backgroundColor: columns.map(col => col.color),
-                        }]
-                    },
-                    options: {
-                        responsive: true
-                    }
-                });
-            }
-
-            fetchSites();
-            setInterval(fetchSites, 60000);
         });
+    }
+
+    // Charger les colonnes depuis le stockage local
+    loadColumnsFromLocalStorage();
+
+    // Initial fetch
+    fetchSites();
+    // Mettre à jour toutes les 60 secondes
+    setInterval(fetchSites, 60000);
+});
     </script>
 </body>
 </html>
