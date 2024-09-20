@@ -1,0 +1,86 @@
+{
+    "google.com": [
+        "Entertainment"
+    ],
+    "code.visualstudio.com": [
+        "Research"
+    ],
+    "vscode.download.prss.microsoft.com": [
+        "Research"
+    ],
+    "docs.redhat.com": [
+        "Research"
+    ],
+    "geeksforgeeks.org": [
+        "Games"
+    ],
+    "askubuntu.com": [
+        "Research"
+    ],
+    "linuxize.com": [
+        "Entertainment"
+    ],
+    "abs.traduc.org": [
+        "Research"
+    ],
+    "forum.ubuntu-fr.org": [
+        "Games"
+    ],
+    "forums.commentcamarche.net": [
+        "Courses"
+    ],
+    "baeldung.com": [
+        "Others"
+    ],
+    "malekal.com": [
+        "Others"
+    ],
+    "lea-linux.org": [
+        "Research"
+    ],
+    "github.com": [
+        "Courses"
+    ],
+    "docs.github.com": [
+        "Courses"
+    ],
+    "numpy.org": [
+        "Courses"
+    ],
+    "pythonforundergradengineers.com": [
+        "Courses"
+    ],
+    "discourse.matplotlib.org": [
+        "Courses"
+    ],
+    "localhost:8000": [
+        "Local"
+    ],
+    "reddit.com": [
+        "Games"
+    ],
+    "accounts.google.com": [
+        "Local"
+    ],
+    "gds.google.com": [
+        "Others"
+    ],
+    "mail.google.com": [
+        "Research"
+    ],
+    "127.0.0.1:5000": [
+        "Local"
+    ],
+    "mozilla.org": [
+        "Local"
+    ],
+    "docs.datalust.co": [
+        "Local"
+    ],
+    "stackoverflow.com": [
+        "Courses"
+    ],
+    "facebook.com": [
+        "Others"
+    ]
+}

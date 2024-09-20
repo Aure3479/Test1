@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Site Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        #controls {
+            margin-bottom: 20px;
+        }
+
+        #main-content {
+            display: flex;
+        }
+
+        #unassigned, .column {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-right: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            width: 200px;
+        }
+
+        .column {
+            background-color: #f9f9f9;
+        }
+
+        .column h2 {
+            background-color: #eee;
+            padding: 5px;
+            text-align: center;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Site Tracker</h1>
+    <div id="controls">
+        <button id="add-column">Add Column</button>
+        <!-- Time Filter Buttons -->
+        <button class="time-filter" data-period="day">1 Day</button>
+        <button class="time-filter" data-period="week">1 Week</button>
+        <button class="time-filter" data-period="month">1 Month</button>
+        <button class="time-filter" data-period="all">All Time</button>
+        <select id="sort-options">
+            <option value="name">Sort by Name</option>
+            <option value="visits">Sort by Visits</option>
+        </select>
+    </div>
+    <div id="main-content">
+        <div id="unassigned">
+            <h2>Unassigned Sites</h2>
+            <ul id="unassigned-list">
+                <!-- List of unassigned sites -->
+            </ul>
+        </div>
+        <div id="columns">
+            <!-- Dynamic columns will be added here -->
+        </div>
+    </div>
+    <canvas id="categoryChart" width="400" height="200"></canvas>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Scripts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const unassignedList = document.getElementById('unassigned-list');
+            const columnsDiv = document.getElementById('columns');
+            const addColumnBtn = document.getElementById('add-column');
+            const sortOptions = document.getElementById('sort-options');
+            const timeFilterButtons = document.querySelectorAll('.time-filter');
+
+            let sites = []; // Will fetch from server
+            let columns = [
+                { title: 'Games', color: getRandomColor(), sites: [] },
+                { title: 'Entertainment', color: getRandomColor(), sites: [] },
+                { title: 'Research', color: getRandomColor(), sites: [] },
+                { title: 'Courses', color: getRandomColor(), sites: [] },
+                { title: 'Others', color: getRandomColor(), sites: [] },
+            ];
+
+            let currentTimeFilter = 'all';
+
+            function getRandomColor() {
+                return '#' + Math.floor(Math.random()*16777215).toString(16);
+            }
+
+            function renderSites() {
+                unassignedList.innerHTML = '';
+                let filteredSites = filterSitesByTime(sites);
+                filteredSites.forEach((site) => {
+                    if (site.categories.length === 0) {
+                        let li = document.createElement('li');
+                        li.textContent = `${site.url} (Visits: ${site.visits})`;
+                        let select = document.createElement('select');
+                        select.innerHTML = '<option value="">Assign Category</option>';
+                        columns.forEach((col, colIndex) => {
+                            let option = document.createElement('option');
+                            option.value = colIndex;
+                            option.textContent = col.title;
+                            select.appendChild(option);
+                        });
+                        select.addEventListener('change', (e) => {
+                            let colIndex = e.target.value;
+                            if (colIndex !== '') {
+                                let column = columns[colIndex];
+                                site.categories.push(column.title);
+                                column.sites.push(site);
+                                fetch(`/api/sites/${encodeURIComponent(site.url)}/categories`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ categories: site.categories })
+                                })
+                                .then(response => response.json())
+                                .then(() => {
+                                    renderColumns();
+                                    renderSites();
+                                    renderChart();
+                                });
+                            }
+                        });
+                        li.appendChild(select);
+                        unassignedList.appendChild(li);
+                    }
+                });
+            }
+
+            function renderColumns() {
+                columnsDiv.innerHTML = '';
+                columns.forEach((col) => {
+                    let colDiv = document.createElement('div');
+                    colDiv.className = 'column';
+                    colDiv.style.backgroundColor = col.color;
+                    let h2 = document.createElement('h2');
+                    let totalVisits = getTotalVisits(col.sites);
+                    h2.textContent = `${col.title} (Total Visits: ${totalVisits})`;
+                    colDiv.appendChild(h2);
+
+                    let ul = document.createElement('ul');
+                    let filteredSites = filterSitesByTime(col.sites);
+                    filteredSites.forEach((site) => {
+                        let li = document.createElement('li');
+                        li.textContent = `${site.url} (Visits: ${site.visits})`;
+                        ul.appendChild(li);
+                    });
+                    colDiv.appendChild(ul);
+                    columnsDiv.appendChild(colDiv);
+                });
+            }
+
+            function getTotalVisits(sites) {
+                let filteredSites = filterSitesByTime(sites);
+                return filteredSites.reduce((sum, site) => sum + site.visits, 0);
+            }
+
+            function filterSitesByTime(sites) {
+                let now = new Date();
+                let filteredSites = sites.filter(site => {
+                    if (currentTimeFilter === 'all') {
+                        return true;
+                    }
+                    let timestamps = site.timestamps.map(ts => new Date(ts));
+                    let periodStart;
+                    switch (currentTimeFilter) {
+                        case 'day':
+                            periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                            break;
+                        case 'week':
+                            periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                            break;
+                        case 'month':
+                            periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                            break;
+                        default:
+                            return true;
+                    }
+                    return timestamps.some(ts => ts >= periodStart);
+                });
+                return filteredSites;
+            }
+
+            timeFilterButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    currentTimeFilter = button.getAttribute('data-period');
+                    renderSites();
+                    renderColumns();
+                    renderChart();
+                });
+            });
+
+            addColumnBtn.addEventListener('click', () => {
+                let title = prompt('Enter column title:');
+                if (title) {
+                    columns.push({ title: title, color: getRandomColor(), sites: [] });
+                    renderColumns();
+                    renderSites();
+                    renderChart();
+                }
+            });
+
+            sortOptions.addEventListener('change', () => {
+                if (sortOptions.value === 'name') {
+                    sites.sort((a, b) => a.url.localeCompare(b.url));
+                } else if (sortOptions.value === 'visits') {
+                    sites.sort((a, b) => b.visits - a.visits);
+                }
+                renderSites();
+                renderColumns();
+                renderChart();
+            });
+
+            function fetchSites() {
+                fetch('/api/sites')
+                    .then(response => response.json())
+                    .then(data => {
+                        sites = data;
+                        columns.forEach(col => col.sites = []);
+                        sites.forEach(site => {
+                            site.categories = site.categories || [];
+                            site.timestamps = site.timestamps || [];
+                            site.categories.forEach(category => {
+                                let column = columns.find(col => col.title === category);
+                                if (column) {
+                                    column.sites.push(site);
+                                }
+                            });
+                        });
+                        renderSites();
+                        renderColumns();
+                        renderChart();
+                    });
+            }
+
+            function renderChart() {
+                const ctx = document.getElementById('categoryChart').getContext('2d');
+                const categoryData = columns.map(col => getTotalVisits(col.sites));
+                const categoryLabels = columns.map(col => col.title);
+
+                if (window.categoryChart) {
+                    window.categoryChart.destroy();
+                }
+
+                window.categoryChart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: categoryLabels,
+                        datasets: [{
+                            data: categoryData,
+                            backgroundColor: columns.map(col => col.color),
+                        }]
+                    },
+                    options: {
+                        responsive: true
+                    }
+                });
+            }
+
+            fetchSites();
+            setInterval(fetchSites, 60000);
+        });
+    </script>
+</body>
+</html>
